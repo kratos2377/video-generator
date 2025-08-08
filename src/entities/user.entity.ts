@@ -19,13 +19,16 @@ export class User {
   email: string;
 
   @Column()
-  password: string;
-
-  @Column()
   name: string;
 
   @Column({ nullable: true })
   avatar?: string;
+
+  @Column({ unique: true })
+  googleId: string;
+
+  @Column({ default: 'google' })
+  provider: string;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -51,6 +51,10 @@ export class OpenAIService {
       quality: 'hd',
     });
 
+    if (response.data === null || response.data === undefined) {
+      throw new Error('No image generated');
+    }
+
     return response.data[0]?.url || '';
   }
 
@@ -58,23 +62,24 @@ export class OpenAIService {
     imageUrl: string,
     prompt?: string,
   ): Promise<string> {
-    // Note: OpenAI's image-to-video API is still in beta
-    // This is a placeholder implementation
+    
+    //Implement VEO3 API for image to video generation
+
     const videoPrompt =
       prompt ||
       'Create a smooth, cinematic video from this image with subtle camera movement';
 
     try {
-      const response = await this.openai.videos.generate({
-        model: 'dall-e-3',
-        prompt: videoPrompt,
-        image: imageUrl,
-        n: 1,
-        size: '1024x1024',
-        duration: 3,
-      });
+      // const response = await this.openai.videos.generate({
+      //   model: 'dall-e-3',
+      //   prompt: videoPrompt,
+      //   image: imageUrl,
+      //   n: 1,
+      //   size: '1024x1024',
+      //   duration: 3,
+      // });
 
-      return response.data[0]?.url || '';
+      return  '';
     } catch (error) {
       console.error('Image-to-video generation failed:', error);
       // Fallback: return the original image URL

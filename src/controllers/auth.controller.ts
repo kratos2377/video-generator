@@ -1,19 +1,33 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Get,
+  Redirect,
+  Query,
+} from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
-import { LoginDto, RegisterDto, AuthResponseDto } from '../dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('register')
-  async register(@Body() registerDto: RegisterDto): Promise<AuthResponseDto> {
-    return this.authService.register(registerDto);
+  @Get('google-auth')
+  @Redirect()
+  async googleAuth(): Promise<{ url: string }> {
+    return this.authService.googleAuth();
   }
 
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
-    return this.authService.login(loginDto);
+  @Get('google-callback')
+  @Redirect()
+  async googleAuthCallback(
+    @Query('code') code: string,
+  ): Promise<{ url: string }> {
+    const { email, refreshToken, accessToken } =
+      await this.authService.getAuthClientData(code);
+    // Implement additional sign-in logic here
+    return { url: process.env.REDIRECT_TO_LOGIN! };
   }
 }

@@ -3,33 +3,27 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { MulterModule } from '@nestjs/platform-express';
 
-// Entities
 import { User } from './entities/user.entity';
 import { ChatSession } from './entities/chat-session.entity';
-import { ChatMessage } from './entities/chat-message.entity';
+import { MediaFile } from './entities/media-file.entity';
 import { Script } from './entities/script.entity';
 import { Scene } from './entities/scene.entity';
 
-// Controllers
 import { AppController } from './app.controller';
 import { AuthController } from './controllers/auth.controller';
 import { ChatController } from './controllers/chat.controller';
 
-// Services
 import { AppService } from './app.service';
 import { AuthService } from './services/auth.service';
 import { ChatService } from './services/chat.service';
 import { OpenAIService } from './services/openai.service';
+import { SSEService } from './services/sse.service';
+import { S3Service } from './services/s3.service';
 
-// Guards and Strategies
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { WsJwtGuard } from './guards/ws-jwt.guard';
-import { JwtStrategy } from './strategies/jwt.strategy';
-
-// Gateways
-import { ChatGateway } from './gateways/chat.gateway';
-
+import { GoogleService } from './services/google.service';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -38,19 +32,22 @@ import { ChatGateway } from './gateways/chat.gateway';
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT) || 5432,
+      port: parseInt(process.env.DB_PORT!) || 5432,
       username: process.env.DB_USERNAME || 'postgres',
       password: process.env.DB_PASSWORD || 'password',
       database: process.env.DB_DATABASE || 'movie_generator',
-      entities: [User, ChatSession, ChatMessage, Script, Scene],
+      entities: [User, ChatSession, MediaFile, Script, Scene],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
     }),
-    TypeOrmModule.forFeature([User, ChatSession, ChatMessage, Script, Scene]),
+    TypeOrmModule.forFeature([User, ChatSession, MediaFile, Script, Scene]),
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '24h' },
+    }),
+    MulterModule.register({
+      storage: undefined, // Use memory storage for S3 uploads
     }),
   ],
   controllers: [AppController, AuthController, ChatController],
@@ -59,10 +56,10 @@ import { ChatGateway } from './gateways/chat.gateway';
     AuthService,
     ChatService,
     OpenAIService,
+    SSEService,
+    S3Service,
     JwtAuthGuard,
-    WsJwtGuard,
-    JwtStrategy,
-    ChatGateway,
+    GoogleService,
   ],
 })
 export class AppModule {}

@@ -1,27 +1,28 @@
 # 🎬 Movie Generator
 
-An AI-powered movie script and scene generation application with a cursor-like chat interface. Built with NestJS, TypeScript, PostgreSQL, and OpenAI's latest models.
+An AI-powered movie script and scene generation application with real-time chat functionality, Google OAuth authentication, and scalable S3-based storage. Built with NestJS, TypeScript, PostgreSQL, and OpenAI's latest models.
 
 ## ✨ Features
 
-- **AI Chat Interface**: Cursor-like chat experience with real-time messaging
+- **AI Chat Interface**: Real-time chat experience with Server-Sent Events (SSE)
 - **Script Generation**: Generate professional movie scripts using GPT-4
 - **Image Generation**: Create scene images using DALL-E 3
-- **Image-to-Video**: Convert images to videos (placeholder for future OpenAI API)
+- **Media Management**: Upload and manage images, videos, and documents
 - **Tool Calls**: Visual tool call indicators during AI processing
-- **Real-time Updates**: WebSocket support for live chat experience
-- **User Authentication**: JWT-based authentication system
-- **PostgreSQL Database**: Persistent storage for all data
-- **Modern UI**: Beautiful, responsive interface with glassmorphism design
+- **Real-time Updates**: SSE support for live chat experience
+- **Google OAuth**: Secure authentication with Google
+- **Scalable Storage**: S3-based file storage with PostgreSQL metadata
+- **Modern UI**: Beautiful, responsive interface
 
 ## 🏗️ Architecture
 
 - **Backend**: NestJS with TypeScript
-- **Database**: PostgreSQL with TypeORM
-- **Authentication**: JWT with Passport.js
-- **Real-time**: Socket.io for WebSocket connections
+- **Database**: PostgreSQL with TypeORM (metadata only)
+- **Storage**: AWS S3 for chat content and media files
+- **Authentication**: Google OAuth + JWT
+- **Real-time**: Server-Sent Events (SSE)
 - **AI Integration**: OpenAI API (GPT-4, DALL-E 3)
-- **Frontend**: HTML/CSS/JavaScript with modern UI
+- **File Upload**: Multer with S3 integration
 
 ## 🚀 Quick Start
 

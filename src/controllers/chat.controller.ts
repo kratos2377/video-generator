@@ -6,12 +6,19 @@ import {
   Param,
   UseGuards,
   Request,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ChatService } from '../services/chat.service';
 import {
   CreateChatSessionDto,
   SendMessageDto,
   ChatSessionDto,
+  UploadMediaDto,
 } from '../dto/chat.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
@@ -44,5 +51,71 @@ export class ChatController {
   @Post('messages')
   async sendMessage(@Request() req, @Body() sendDto: SendMessageDto) {
     return this.chatService.sendMessage(req.user.id, sendDto);
+  }
+
+  @Post('upload-media')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadMedia(
+    @Request() req,
+    @Body() uploadDto: UploadMediaDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    return this.chatService.uploadMediaFile(
+      req.user.id,
+      uploadDto.chatSessionId,
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+  }
+
+  @Post('stream/:sessionId/join')
+  async joinChatStream(
+    @Param('sessionId') sessionId: string,
+    @Request() req,
+    @Res() res: Response,
+  ) {
+    // Set SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control',
+    });
+
+    // Send initial connection message
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'connected',
+        sessionId,
+        userId: req.user.id,
+        timestamp: new Date().toISOString(),
+      })}\n\n`,
+    );
+
+    // Keep connection alive with periodic pings
+    const pingInterval = setInterval(() => {
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'ping',
+          timestamp: new Date().toISOString(),
+        })}\n\n`,
+      );
+    }, 30000); // Send ping every 30 seconds
+
+    // Handle client disconnect
+    req.on('close', () => {
+      clearInterval(pingInterval);
+    });
+
+    // Keep the connection open
+    req.on('end', () => {
+      clearInterval(pingInterval);
+    });
   }
 }

@@ -8,7 +8,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { User } from './user.entity';
-import { ChatMessage } from './chat-message.entity';
+import { MediaFile } from './media-file.entity';
 
 @Entity('chat_sessions')
 export class ChatSession {
@@ -27,8 +27,20 @@ export class ChatSession {
   @Column()
   userId: string;
 
-  @OneToMany(() => ChatMessage, (message) => message.chatSession)
-  messages: ChatMessage[];
+  @Column({ nullable: true })
+  s3ChatFileKey?: string;
+
+  @Column({ nullable: true })
+  s3ChatFileUrl?: string;
+
+  @OneToMany(() => MediaFile, (mediaFile) => mediaFile.chatSession)
+  mediaFiles: MediaFile[];
+
+  @Column({ default: 0 })
+  messageCount: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastMessageAt?: Date;
 
   @CreateDateColumn()
   createdAt: Date;

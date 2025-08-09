@@ -116,7 +116,6 @@ export class ChatService {
         where: { id: sendDto.chatSessionId, userId },
       });
     } else {
-      console.log('Creating new chat sessionId');
       chatSession = this.chatSessionRepository.create({
         title: 'New Chat',
         userId,
@@ -133,12 +132,11 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
 
-
     chatSession!.messageCount += 1;
     chatSession!.lastMessageAt = new Date();
 
     streamCallback({
-      type: 'user_message',
+      type: 'ai_chat_session_created',
       data: {
         message: userMessage,
         sessionId: chatSession!.id,
@@ -154,7 +152,7 @@ export class ChatService {
     });
 
     streamCallback({
-      type: 'ai_thinking',
+      type: 'ai_processing_started',
       data: {
         sessionId: chatSession!.id,
       },
@@ -213,7 +211,6 @@ export class ChatService {
 
     const uploadResult = await this.s3Service.uploadMediaFile(
       file,
-      chatSessionId,
       originalName,
       mimeType,
     );
@@ -281,6 +278,14 @@ export class ChatService {
   ): Promise<ChatMessage> {
     try {
       if (stream_response) {
+        streamCallback({
+          type: 'ai_script_generation_started',
+          data: {
+            message: 'Starting to Generate Images',
+            sessionId: sessionId,
+          },
+        });
+
         const scriptMessage = await this.handleScriptGeneration(
           userMessage,
           userId,
@@ -288,14 +293,6 @@ export class ChatService {
           stream_response,
           streamCallback,
         );
-
-        streamCallback({
-          type: 'Generating Image',
-          data: {
-            message: 'Starting to Generate Images',
-            sessionId: sessionId,
-          },
-        });
 
         const imageGenResponse = await this.handleImageGeneration(
           scriptMessage.content,
@@ -307,7 +304,7 @@ export class ChatService {
 
         if (imageGenResponse === null || imageGenResponse === undefined) {
           streamCallback({
-            type: 'Error',
+            type: 'ai_image_generation_error',
             data: {
               message: 'Error while generating Image',
               sessionId: sessionId,
@@ -315,7 +312,7 @@ export class ChatService {
           });
         } else {
           streamCallback({
-            type: 'video_generation_started',
+            type: 'ai_video_generation_started',
             data: {
               message: 'Video Generation Started',
               sessionId: sessionId,
@@ -324,12 +321,15 @@ export class ChatService {
 
           const videoGen = await this.googleGenAIService.generateImageToVideo(
             imageGenResponse as GenerateImagesResponse,
+            scriptMessage.content,
           );
 
           streamCallback({
-            type: 'video_saved',
+            type: 'ai_video_saved',
             data: {
-              message: 'video saved',
+              message: {
+                videoPath: videoGen,
+              },
               sessionId: sessionId,
             },
           });
@@ -414,8 +414,6 @@ export class ChatService {
             sessionId,
           },
         });
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       return aiMessage;
@@ -439,24 +437,6 @@ export class ChatService {
       sessionId,
       genre,
     );
-
-    // const script = this.scriptRepository.create({
-    //   title: `Script from chat - ${new Date().toLocaleDateString()}`,
-    //   content: scriptContent,
-    //   userId,
-    //   genre,
-    // });
-
-    // await this.scriptRepository.save(script);
-
-    // const toolCallMessage: ChatMessage = {
-    //   id: uuidv4(),
-    //   role: 'assistant',
-    //   type: 'tool_call',
-    //   content: 'Generating movie script...',
-    //   metadata: { tool: 'script_generation', scriptId: script.id },
-    //   timestamp: new Date().toISOString(),
-    // };
 
     const toolResultMessage: ChatMessage = {
       id: uuidv4(),
@@ -486,18 +466,32 @@ export class ChatService {
       sessionId,
     );
 
-    const imageGenResponse =
-      await this.googleGenAIService.generateImage(imagePrompt);
+    streamCallback({
+      type: 'ai_image_generation_started',
+      data: {
+        message: 'Starting to Generate Images',
+        sessionId: sessionId,
+      },
+    });
 
-    // const scene = this.sceneRepository.create({
-    //   title: `Scene from chat - ${new Date().toLocaleDateString()}`,
-    //   description: imagePrompt,
-    //   imageUrl,
-    //   userId,
-    // });
+    const imageGenResponse = await this.googleGenAIService.generateImage(
+      imagePrompt,
+      streamCallback,
+    );
 
-    // await this.sceneRepository.save(scene);
-
+    if (
+      imageGenResponse !== null &&
+      imageGenResponse !== undefined &&
+      imageGenResponse.generatedImages !== undefined
+    ) {
+      streamCallback({
+        type: 'ai_image_generation_completed',
+        data: {
+          message: imageGenResponse?.generatedImages[0],
+          sessionId: sessionId,
+        },
+      });
+    }
     return imageGenResponse;
   }
 

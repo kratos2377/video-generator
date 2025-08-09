@@ -49,7 +49,9 @@ export class OpenAIService {
         streamCallback({
           type: 'ai_ad_script',
           data: {
-            message: chunk.choices[0]?.delta?.content,
+            message: {
+              content: chunk.choices[0]?.delta?.content,
+            },
             sessionId: session_id,
           },
         });
@@ -168,8 +170,6 @@ export class OpenAIService {
   ): Promise<string> {
     if (stream_response) {
       let scriptGenerated = '';
-      // console.log('Script Excpert is');
-      // console.log(scriptExcerpt);
 
       const completion = await this.openai.chat.completions.create({
         model: 'gemini-2.0-flash',
@@ -191,14 +191,13 @@ export class OpenAIService {
         streamCallback({
           type: 'ai_scene_description',
           data: {
-            message: chunk.choices[0]?.delta?.content || '',
+            message: {
+              content: chunk.choices[0]?.delta?.content || '',
+            },
             sessionId: session_id,
           },
         });
       }
-
-      // console.log("Final Scriot Generated is")
-      // console.log(scriptGenerated)
 
       return scriptGenerated;
     } else {

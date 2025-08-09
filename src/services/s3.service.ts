@@ -38,7 +38,6 @@ export class S3Service {
       this.configService.get<string>('AWS_S3_BUCKET_NAME') ||
       'movie-generator-chats';
 
-    // Check if we're using MinIO (local development)
     this.useMinIO =
       this.configService.get<string>('MINIO_ENDPOINT') !== undefined;
     this.minioEndpoint =
@@ -55,7 +54,7 @@ export class S3Service {
         secretAccessKey:
           this.configService.get<string>('MINIO_SECRET_KEY') ||
           this.configService.get<string>('AWS_SECRET_ACCESS_KEY') ||
-          'minioadmin',
+          'minioadmin123',
       },
     };
 
@@ -148,11 +147,10 @@ export class S3Service {
 
   async uploadMediaFile(
     file: Buffer,
-    chatId: string,
     fileName: string,
     contentType: string,
   ): Promise<S3UploadResult> {
-    const key = `chats/${chatId}/media/${Date.now()}-${fileName}`;
+    const key = `chats/media/${Date.now()}-${fileName}`;
     return this.uploadFile(file, key, contentType);
   }
 

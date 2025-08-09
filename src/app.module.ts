@@ -12,17 +12,14 @@ import { Script } from './entities/script.entity';
 import { Scene } from './entities/scene.entity';
 
 import { AppController } from './app.controller';
-import { AuthController } from './controllers/auth.controller';
 import { ChatController } from './controllers/chat.controller';
 
 import { AppService } from './app.service';
-import { AuthService } from './services/auth.service';
 import { ChatService } from './services/chat.service';
 import { OpenAIService } from './services/openai.service';
 import { SSEService } from './services/sse.service';
 import { S3Service } from './services/s3.service';
 
-import { GoogleService } from './services/google.service';
 import { GoogleGenAIService } from './services/google.gen.ai.service';
 @Module({
   imports: [
@@ -50,15 +47,13 @@ import { GoogleGenAIService } from './services/google.gen.ai.service';
       storage: undefined,
     }),
   ],
-  controllers: [AppController, AuthController, ChatController],
+  controllers: [AppController, ChatController],
   providers: [
     AppService,
-    AuthService,
     ChatService,
     OpenAIService,
     SSEService,
     S3Service,
-    GoogleService,
     GoogleGenAIService,
   ],
 })

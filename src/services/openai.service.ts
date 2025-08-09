@@ -12,7 +12,7 @@ export class OpenAIService {
     });
   }
 
-  async generateScript(prompt: string, genre?: string): Promise<string> {
+  async generateScript(prompt: string,  stream_response: boolean ,   streamCallback: (chunk: any) => void, session_id: string, genre?: string ): Promise<string> {
     const systemPrompt = `You are a professional screenwriter. Create a compelling movie script based on the user's request. 
     ${genre ? `The genre should be: ${genre}` : ''}
     
@@ -33,9 +33,32 @@ export class OpenAIService {
       ],
       max_tokens: 2000,
       temperature: 0.8,
+      stream: stream_response
     });
 
+
+    if(stream_response) {
+
+      for await (const chunk of completion) {
+
+          streamCallback({
+        type: 'user_message',
+        data: {
+          message: chunk.choices[0]?.delta?.content || "",
+          sessionId: session_id,
+        },
+      });
+
+
+    }
+
+    return "All chunks streamed back"
+
+    } else {
+      
     return completion.choices[0]?.message?.content || '';
+    }
+
   }
 
   async generateImage(prompt: string, style?: string): Promise<string> {
@@ -87,7 +110,7 @@ export class OpenAIService {
     }
   }
 
-  async analyzeScript(scriptContent: string): Promise<any> {
+  async analyzeScript(scriptContent: string , stream_response: boolean, streamCallback: (chunk: any) => void, session_id: string): Promise<any> {
     const completion = await this.openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
@@ -100,16 +123,42 @@ export class OpenAIService {
       ],
       max_tokens: 1000,
       temperature: 0.3,
+      stream: stream_response
     });
 
-    try {
+    if(stream_response) {
+
+      
+      for await (const chunk of completion) {
+
+          streamCallback({
+        type: 'user_message',
+        data: {
+          message: chunk.choices[0]?.delta?.content || "",
+          sessionId: session_id,
+        },
+      });
+
+
+    }
+
+    return "All chunks streamed back"
+
+    } else {
+
+      
+          try {
       return JSON.parse(completion.choices[0]?.message?.content || '{}');
     } catch {
       return { analysis: completion.choices[0]?.message?.content || '' };
     }
+
+    }
+
+
   }
 
-  async generateSceneDescription(scriptExcerpt: string): Promise<string> {
+  async generateSceneDescription(scriptExcerpt: string ,  stream_response: boolean ,   streamCallback: (chunk: any) => void, session_id: string ): Promise<string> {
     const completion = await this.openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
@@ -122,8 +171,31 @@ export class OpenAIService {
       ],
       max_tokens: 500,
       temperature: 0.7,
+      stream: stream_response
     });
 
-    return completion.choices[0]?.message?.content || '';
+    if(stream_response) {
+
+      for await (const chunk of completion) {
+
+          streamCallback({
+        type: 'user_message',
+        data: {
+          message: chunk.choices[0]?.delta?.content || "",
+          sessionId: session_id,
+        },
+      });
+
+
+    }
+
+    return "All chunks streamed back"
+
+    }
+
+    else {
+      return completion.choices[0]?.message?.content || '';
+    }
+
   }
 }

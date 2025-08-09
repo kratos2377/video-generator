@@ -48,10 +48,42 @@ export class ChatController {
     return this.chatService.getChatSession(req.user.id, sessionId);
   }
 
+
   @Post('messages')
-  async sendMessage(@Request() req, @Body() sendDto: SendMessageDto) {
-    return this.chatService.sendMessage(req.user.id, sendDto);
+async sendMessage(
+  @Request() req, 
+  @Body() sendDto: SendMessageDto,
+  @Res() res: Response,
+) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control',
+  });
+
+  try {
+    const streamCallback = (chunk: any) => {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    };
+
+    await this.chatService.sendMessageStream(
+      req.user.id, 
+      sendDto, 
+      streamCallback
+    );
+
+    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+    res.end();
+  } catch (error) {
+    res.write(`data: ${JSON.stringify({ 
+      type: 'error', 
+      error: error.message 
+    })}\n\n`);
+    res.end();
   }
+}
 
   @Post('upload-media')
   @UseInterceptors(FileInterceptor('file'))
@@ -79,7 +111,6 @@ export class ChatController {
     @Request() req,
     @Res() res: Response,
   ) {
-    // Set SSE headers
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -88,7 +119,6 @@ export class ChatController {
       'Access-Control-Allow-Headers': 'Cache-Control',
     });
 
-    // Send initial connection message
     res.write(
       `data: ${JSON.stringify({
         type: 'connected',
@@ -98,7 +128,6 @@ export class ChatController {
       })}\n\n`,
     );
 
-    // Keep connection alive with periodic pings
     const pingInterval = setInterval(() => {
       res.write(
         `data: ${JSON.stringify({
@@ -106,14 +135,12 @@ export class ChatController {
           timestamp: new Date().toISOString(),
         })}\n\n`,
       );
-    }, 30000); // Send ping every 30 seconds
+    }, 30000); 
 
-    // Handle client disconnect
     req.on('close', () => {
       clearInterval(pingInterval);
     });
 
-    // Keep the connection open
     req.on('end', () => {
       clearInterval(pingInterval);
     });

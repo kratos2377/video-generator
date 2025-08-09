@@ -47,7 +47,7 @@ import { GoogleService } from './services/google.service';
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '24h' },
     }),
     MulterModule.register({
-      storage: undefined, // Use memory storage for S3 uploads
+      storage: undefined,
     }),
   ],
   controllers: [AppController, AuthController, ChatController],

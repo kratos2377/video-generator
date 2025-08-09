@@ -38,7 +38,6 @@ export class GoogleService {
     return authClient;
   }
   getAuthUrl(authClient: OAuth2Client): { url: string } {
-    // Generate the url that will be used for the consent dialog.
     const authorizeUrl = authClient.generateAuthUrl({
       access_type: 'offline',
       scope: this.scopesAPI,

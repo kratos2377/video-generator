@@ -43,17 +43,14 @@ export class ChatService {
 
     const savedSession = await this.chatSessionRepository.save(chatSession);
 
-    // Initialize empty chat file in S3
     await this.s3Service.uploadChatFile(savedSession.id, []);
 
-    // Update session with S3 file info
     savedSession.s3ChatFileKey = this.s3Service.generateChatFileKey(
       savedSession.id,
     );
     savedSession.s3ChatFileUrl = `https://${process.env.AWS_S3_BUCKET_NAME || 'movie-generator-chats'}.s3.amazonaws.com/${savedSession.s3ChatFileKey}`;
     await this.chatSessionRepository.save(savedSession);
 
-    // Broadcast session creation event
     this.sseService.broadcastToUser(userId, {
       type: 'chat_session_created',
       data: this.mapToChatSessionDto(savedSession),
@@ -85,7 +82,6 @@ export class ChatService {
       throw new Error('Chat session not found');
     }
 
-    // Load messages from S3
     const messages = await this.s3Service.downloadChatFile(sessionId);
 
     return {
@@ -101,74 +97,84 @@ export class ChatService {
     };
   }
 
-  async sendMessage(
-    userId: string,
-    sendDto: SendMessageDto,
-  ): Promise<ChatMessage> {
-    let chatSession: ChatSession | null;
+  async sendMessageStream(
+  userId: string,
+  sendDto: SendMessageDto,
+  streamCallback: (chunk: any) => void,
+): Promise<void> {
+  let chatSession: ChatSession | null;
 
-    if (sendDto.chatSessionId) {
-      chatSession = await this.chatSessionRepository.findOne({
-        where: { id: sendDto.chatSessionId, userId },
-      });
-    } else {
-      chatSession = this.chatSessionRepository.create({
-        title: 'New Chat',
-        userId,
-      });
-      chatSession = await this.chatSessionRepository.save(chatSession);
-
-      // Initialize S3 file for new session
-      await this.s3Service.uploadChatFile(chatSession.id, []);
-      chatSession.s3ChatFileKey = this.s3Service.generateChatFileKey(
-        chatSession.id,
-      );
-      chatSession.s3ChatFileUrl = `https://${process.env.AWS_S3_BUCKET_NAME || 'movie-generator-chats'}.s3.amazonaws.com/${chatSession.s3ChatFileKey}`;
-      await this.chatSessionRepository.save(chatSession);
-    }
-
-    // Create user message
-    const userMessage: ChatMessage = {
-      id: uuidv4(),
-      role: 'user',
-      type: 'text',
-      content: sendDto.content,
-      timestamp: new Date().toISOString(),
-    };
-
-    // Save user message to S3
-    await this.s3Service.appendMessageToChat(chatSession!.id, userMessage);
-
-    // Update session metadata
-    chatSession!.messageCount += 1;
-    chatSession!.lastMessageAt = new Date();
-    await this.chatSessionRepository.save(chatSession!);
-
-    // Broadcast user message to session
-    this.sseService.broadcastToSession(chatSession!.id, {
-      type: 'new_message',
-      data: {
-        message: userMessage,
-        sessionId: chatSession!.id,
-      },
+  if (sendDto.chatSessionId) {
+    chatSession = await this.chatSessionRepository.findOne({
+      where: { id: sendDto.chatSessionId, userId },
     });
+  } else {
+    chatSession = this.chatSessionRepository.create({
+      title: 'New Chat',
+      userId,
+    });
+    chatSession = await this.chatSessionRepository.save(chatSession);
 
-    // Process with AI and tools
-    const aiResponse = await this.processWithAI(
+    await this.s3Service.uploadChatFile(chatSession.id, []);
+    chatSession.s3ChatFileKey = this.s3Service.generateChatFileKey(
+      chatSession.id,
+    );
+    chatSession.s3ChatFileUrl = `https://${process.env.AWS_S3_BUCKET_NAME || 'movie-generator-chats'}.s3.amazonaws.com/${chatSession.s3ChatFileKey}`;
+    await this.chatSessionRepository.save(chatSession);
+  }
+
+  const userMessage: ChatMessage = {
+    id: uuidv4(),
+    role: 'user',
+    type: 'text',
+    content: sendDto.content,
+    timestamp: new Date().toISOString(),
+  };
+
+  await this.s3Service.appendMessageToChat(chatSession!.id, userMessage);
+
+  chatSession!.messageCount += 1;
+  chatSession!.lastMessageAt = new Date();
+  await this.chatSessionRepository.save(chatSession!);
+
+  streamCallback({
+    type: 'user_message',
+    data: {
+      message: userMessage,
+      sessionId: chatSession!.id,
+    },
+  });
+
+  this.sseService.broadcastToSession(chatSession!.id, {
+    type: 'new_message',
+    data: {
+      message: userMessage,
+      sessionId: chatSession!.id,
+    },
+  });
+
+  streamCallback({
+    type: 'ai_thinking',
+    data: {
+      sessionId: chatSession!.id,
+    },
+  });
+
+  try {
+    const aiResponse = await this.processWithAIStream(
       sendDto.content,
       userId,
       chatSession!.id,
+      'script',
+      streamCallback,
     );
 
-    // Save AI response to S3
     await this.s3Service.appendMessageToChat(chatSession!.id, aiResponse);
 
-    // Update session metadata
     chatSession!.messageCount += 1;
     chatSession!.lastMessageAt = new Date();
     await this.chatSessionRepository.save(chatSession!);
 
-    // Broadcast AI response to session
     this.sseService.broadcastToSession(chatSession!.id, {
       type: 'new_message',
       data: {
@@ -177,8 +183,25 @@ export class ChatService {
       },
     });
 
-    return aiResponse;
+    streamCallback({
+      type: 'ai_response_complete',
+      data: {
+        message: aiResponse,
+        sessionId: chatSession!.id,
+      },
+    });
+
+  } catch (error) {
+    streamCallback({
+      type: 'ai_error',
+      data: {
+        error: error.message,
+        sessionId: chatSession!.id,
+      },
+    });
+    throw error;
   }
+}
 
   async uploadMediaFile(
     userId: string,
@@ -187,7 +210,6 @@ export class ChatService {
     originalName: string,
     mimeType: string,
   ): Promise<MediaFile> {
-    // Verify chat session belongs to user
     const chatSession = await this.chatSessionRepository.findOne({
       where: { id: chatSessionId, userId },
     });
@@ -196,7 +218,6 @@ export class ChatService {
       throw new Error('Chat session not found');
     }
 
-    // Upload file to S3
     const uploadResult = await this.s3Service.uploadMediaFile(
       file,
       chatSessionId,
@@ -204,7 +225,6 @@ export class ChatService {
       mimeType,
     );
 
-    // Determine media type
     let mediaType = MediaType.DOCUMENT;
     if (mimeType.startsWith('image/')) {
       mediaType = MediaType.IMAGE;
@@ -214,7 +234,6 @@ export class ChatService {
       mediaType = MediaType.AUDIO;
     }
 
-    // Save media file metadata to database
     const mediaFile = this.mediaFileRepository.create({
       fileName: uploadResult.key.split('/').pop() || originalName,
       originalName,
@@ -228,7 +247,6 @@ export class ChatService {
 
     const savedMediaFile = await this.mediaFileRepository.save(mediaFile);
 
-    // Create message about uploaded file
     const mediaMessage: ChatMessage = {
       id: uuidv4(),
       role: 'user',
@@ -243,15 +261,12 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
 
-    // Save media message to S3
     await this.s3Service.appendMessageToChat(chatSessionId, mediaMessage);
 
-    // Update session metadata
     chatSession.messageCount += 1;
     chatSession.lastMessageAt = new Date();
     await this.chatSessionRepository.save(chatSession);
 
-    // Broadcast media upload event
     this.sseService.broadcastToSession(chatSessionId, {
       type: 'media_uploaded',
       data: {
@@ -268,43 +283,118 @@ export class ChatService {
     userMessage: string,
     userId: string,
     sessionId: string,
+    stream_response: boolean,
+     streamCallback: (chunk: any) => void,
   ): Promise<ChatMessage> {
-    // Check if user wants to generate a script
     if (
       userMessage.toLowerCase().includes('script') ||
       userMessage.toLowerCase().includes('write')
     ) {
-      return this.handleScriptGeneration(userMessage, userId, sessionId);
+      return this.handleScriptGeneration(userMessage, userId, sessionId , stream_response , streamCallback);
     }
 
-    // Check if user wants to generate an image
     if (
       userMessage.toLowerCase().includes('image') ||
       userMessage.toLowerCase().includes('scene')
     ) {
-      return this.handleImageGeneration(userMessage, userId, sessionId);
+      return this.handleImageGeneration(userMessage, userId, sessionId , stream_response , streamCallback);
     }
 
-    // Default AI response
-    return this.handleDefaultResponse(userMessage, sessionId);
+    return this.handleDefaultResponse(userMessage, sessionId , stream_response , streamCallback);
   }
+
+
+  private async processWithAIStream(
+  content: string,
+  userId: string,
+  sessionId: string,
+  message_type: string,
+  streamCallback: (chunk: any) => void,
+): Promise<ChatMessage> {
+  const aiMessage: ChatMessage = {
+    id: uuidv4(),
+    role: 'assistant',
+    type: 'text',
+    content: '',
+    timestamp: new Date().toISOString(),
+  };
+
+  streamCallback({
+    type: 'ai_message_start',
+    data: {
+      message: aiMessage,
+      sessionId,
+    },
+  });
+
+  try {
+    const aiStream = await this.processWithAI(content, userId, sessionId , true , streamCallback);
+    
+    let fullContent = '';
+    
+    for await (const chunk of aiStream) {
+      if (chunk.type === 'content') {
+        fullContent += chunk.text;
+        aiMessage.content = fullContent;
+
+        streamCallback({
+          type: 'ai_message_chunk',
+          data: {
+            chunk: chunk.text,
+            message: { ...aiMessage },
+            sessionId,
+          },
+        });
+      }
+    }
+
+    aiMessage.content = fullContent;
+    return aiMessage;
+
+  } catch (error) {
+    console.warn('AI streaming failed, falling back to regular processing:', error);
+    
+    const response = await this.processWithAI(content, userId, sessionId , false , streamCallback);
+    aiMessage.content = response.content;
+    const words = response.content.split(' ');
+    for (let i = 0; i < words.length; i++) {
+      const chunk = words.slice(0, i + 1).join(' ');
+      aiMessage.content = chunk;
+      
+      streamCallback({
+        type: 'ai_message_chunk',
+        data: {
+          chunk: words[i] + ' ',
+          message: { ...aiMessage },
+          sessionId,
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    return aiMessage;
+  }
+}
 
   private async handleScriptGeneration(
     userMessage: string,
     userId: string,
     sessionId: string,
+    stream_response: boolean,
+    streamCallback: (chunk: any) => void,
   ): Promise<ChatMessage> {
-    // Extract genre if mentioned
     const genreMatch = userMessage.match(/(?:genre|type|style):\s*(\w+)/i);
     const genre = genreMatch ? genreMatch[1] : undefined;
 
-    // Generate script
     const scriptContent = await this.openaiService.generateScript(
       userMessage,
+      stream_response,
+      streamCallback,
+      sessionId,
       genre,
     );
 
-    // Save script to database
     const script = this.scriptRepository.create({
       title: `Script from chat - ${new Date().toLocaleDateString()}`,
       content: scriptContent,
@@ -314,7 +404,6 @@ export class ChatService {
 
     await this.scriptRepository.save(script);
 
-    // Create tool call message
     const toolCallMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
@@ -324,7 +413,6 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
 
-    // Create tool result message
     const toolResultMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
@@ -341,25 +429,24 @@ export class ChatService {
     userMessage: string,
     userId: string,
     sessionId: string,
+    stream_response: boolean,
+    streamCallback: (chunk: any) => void,
   ): Promise<ChatMessage> {
-    // Extract style if mentioned
+
     const styleMatch = userMessage.match(/(?:style|art style):\s*([^,]+)/i);
     const style = styleMatch ? styleMatch[1].trim() : undefined;
 
-    // Generate scene description if not provided
     let imagePrompt = userMessage;
     if (
       !userMessage.toLowerCase().includes('scene') &&
       !userMessage.toLowerCase().includes('image')
     ) {
       imagePrompt =
-        await this.openaiService.generateSceneDescription(userMessage);
+        await this.openaiService.generateSceneDescription(userMessage , stream_response, streamCallback , sessionId);
     }
 
-    // Generate image
     const imageUrl = await this.openaiService.generateImage(imagePrompt, style);
 
-    // Save scene to database
     const scene = this.sceneRepository.create({
       title: `Scene from chat - ${new Date().toLocaleDateString()}`,
       description: imagePrompt,
@@ -369,7 +456,6 @@ export class ChatService {
 
     await this.sceneRepository.save(scene);
 
-    // Create tool call message
     const toolCallMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
@@ -379,7 +465,6 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
 
-    // Create tool result message
     const toolResultMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
@@ -395,9 +480,14 @@ export class ChatService {
   private async handleDefaultResponse(
     userMessage: string,
     sessionId: string,
+    stream_response: boolean,
+    streamCallback: (chunk: any) => void
   ): Promise<ChatMessage> {
     const response = await this.openaiService.generateScript(
       `User message: ${userMessage}\n\nPlease provide a helpful response about movie script writing, scene generation, or creative filmmaking.`,
+      stream_response,
+      streamCallback,
+      sessionId,
     );
 
     return {
@@ -414,7 +504,7 @@ export class ChatService {
       id: session.id,
       title: session.title,
       description: session.description,
-      messages: [], // Messages are loaded from S3 when needed
+      messages: [],
       mediaFiles:
         session.mediaFiles?.map((media) => ({
           id: media.id,

@@ -27,7 +27,6 @@ export class AuthController {
   ): Promise<{ url: string }> {
     const { email, refreshToken, accessToken } =
       await this.authService.getAuthClientData(code);
-    // Implement additional sign-in logic here
     return { url: process.env.REDIRECT_TO_LOGIN! };
   }
 }

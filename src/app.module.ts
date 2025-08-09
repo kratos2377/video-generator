@@ -22,8 +22,8 @@ import { OpenAIService } from './services/openai.service';
 import { SSEService } from './services/sse.service';
 import { S3Service } from './services/s3.service';
 
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleService } from './services/google.service';
+import { GoogleGenAIService } from './services/google.gen.ai.service';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -58,8 +58,8 @@ import { GoogleService } from './services/google.service';
     OpenAIService,
     SSEService,
     S3Service,
-    JwtAuthGuard,
     GoogleService,
+    GoogleGenAIService,
   ],
 })
 export class AppModule {}

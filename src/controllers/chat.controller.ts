@@ -4,7 +4,6 @@ import {
   Post,
   Body,
   Param,
-  UseGuards,
   Request,
   Res,
   UploadedFile,
@@ -20,10 +19,9 @@ import {
   ChatSessionDto,
   UploadMediaDto,
 } from '../dto/chat.dto';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { v4 as uuidv4 } from 'uuid';
 
 @Controller('chat')
-@UseGuards(JwtAuthGuard)
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
@@ -48,42 +46,43 @@ export class ChatController {
     return this.chatService.getChatSession(req.user.id, sessionId);
   }
 
-
   @Post('messages')
-async sendMessage(
-  @Request() req, 
-  @Body() sendDto: SendMessageDto,
-  @Res() res: Response,
-) {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Cache-Control',
-  });
+  async sendMessage(
+    @Request() req,
+    @Body() sendDto: SendMessageDto,
+    @Res() res: Response,
+  ) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control',
+    });
 
-  try {
-    const streamCallback = (chunk: any) => {
-      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-    };
+    try {
+      const streamCallback = (chunk: any) => {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      };
 
-    await this.chatService.sendMessageStream(
-      req.user.id, 
-      sendDto, 
-      streamCallback
-    );
+      await this.chatService.sendMessageStream(
+        uuidv4(),
+        sendDto,
+        streamCallback,
+      );
 
-    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-    res.end();
-  } catch (error) {
-    res.write(`data: ${JSON.stringify({ 
-      type: 'error', 
-      error: error.message 
-    })}\n\n`);
-    res.end();
+      res.write(`data: ${JSON.stringify({ type: 'Generation Complete' })}\n\n`);
+      res.end();
+    } catch (error) {
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'error',
+          error: error.message,
+        })}\n\n`,
+      );
+      res.end();
+    }
   }
-}
 
   @Post('upload-media')
   @UseInterceptors(FileInterceptor('file'))
@@ -135,7 +134,7 @@ async sendMessage(
           timestamp: new Date().toISOString(),
         })}\n\n`,
       );
-    }, 30000); 
+    }, 30000);
 
     req.on('close', () => {
       clearInterval(pingInterval);

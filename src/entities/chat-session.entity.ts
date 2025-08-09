@@ -21,9 +21,6 @@ export class ChatSession {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @ManyToOne(() => User, (user) => user.chatSessions)
-  user: User;
-
   @Column()
   userId: string;
 

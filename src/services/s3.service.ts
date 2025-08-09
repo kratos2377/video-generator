@@ -17,8 +17,8 @@ export interface S3UploadResult {
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
-  type: 'text' | 'image' | 'script' | 'tool_call';
+  role: 'user' | 'assistant' | 'system';
+  type: 'text' | 'image' | 'script' | 'tool_call' | 'error';
   content: string;
   metadata?: Record<string, any>;
   timestamp: string;
@@ -28,21 +28,45 @@ export interface ChatMessage {
 export class S3Service {
   private readonly s3Client: S3Client;
   private readonly bucketName: string;
+  private readonly minioEndpoint: string;
+  private readonly useMinIO: boolean;
   private readonly logger = new Logger(S3Service.name);
 
   constructor(private configService: ConfigService) {
     this.bucketName =
+      this.configService.get<string>('MINIO_BUCKET_NAME') ||
       this.configService.get<string>('AWS_S3_BUCKET_NAME') ||
       'movie-generator-chats';
 
-    this.s3Client = new S3Client({
+    // Check if we're using MinIO (local development)
+    this.useMinIO =
+      this.configService.get<string>('MINIO_ENDPOINT') !== undefined;
+    this.minioEndpoint =
+      this.configService.get<string>('MINIO_ENDPOINT') ||
+      'http://localhost:9000';
+
+    const s3Config: any = {
       region: this.configService.get<string>('AWS_REGION') || 'us-east-1',
       credentials: {
-        accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID') || '',
+        accessKeyId:
+          this.configService.get<string>('MINIO_ACCESS_KEY') ||
+          this.configService.get<string>('AWS_ACCESS_KEY_ID') ||
+          'minioadmin',
         secretAccessKey:
-          this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '',
+          this.configService.get<string>('MINIO_SECRET_KEY') ||
+          this.configService.get<string>('AWS_SECRET_ACCESS_KEY') ||
+          'minioadmin',
       },
-    });
+    };
+
+    // Configure for MinIO if using local storage
+    if (this.useMinIO) {
+      s3Config.endpoint = this.minioEndpoint;
+      s3Config.forcePathStyle = true; // Required for MinIO
+      s3Config.region = 'us-east-1'; // MinIO doesn't care about region, but SDK requires it
+    }
+
+    this.s3Client = new S3Client(s3Config);
   }
 
   async uploadFile(
@@ -61,7 +85,7 @@ export class S3Service {
 
       await this.s3Client.send(command);
 
-      const url = `https://${this.bucketName}.s3.amazonaws.com/${key}`;
+      const url = this.generateFileUrl(key);
 
       return {
         key,
@@ -189,5 +213,15 @@ export class S3Service {
 
   generateMediaFileKey(chatId: string, fileName: string): string {
     return `chats/${chatId}/media/${Date.now()}-${fileName}`;
+  }
+
+  private generateFileUrl(key: string): string {
+    if (this.useMinIO) {
+      // MinIO URL format: http://localhost:9000/bucket-name/key
+      return `${this.minioEndpoint}/${this.bucketName}/${key}`;
+    } else {
+      // AWS S3 URL format
+      return `https://${this.bucketName}.s3.amazonaws.com/${key}`;
+    }
   }
 }

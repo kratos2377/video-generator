@@ -36,9 +36,6 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => ChatSession, (chatSession) => chatSession.user)
-  chatSessions: ChatSession[];
-
   @OneToMany(() => Script, (script) => script.user)
   scripts: Script[];
 

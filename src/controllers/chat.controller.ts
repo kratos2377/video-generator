@@ -42,8 +42,9 @@ export class ChatController {
   async getChatSession(
     @Request() req,
     @Param('id') sessionId: string,
+    @Param('userId') userId: string
   ): Promise<ChatSessionDto> {
-    return this.chatService.getChatSession(req.user.id, sessionId);
+    return this.chatService.getChatSession(userId, sessionId);
   }
 
   @Post('messages')
@@ -66,7 +67,7 @@ export class ChatController {
       };
 
       await this.chatService.sendMessageStream(
-        uuidv4(),
+        sendDto.userId,
         sendDto,
         streamCallback,
       );

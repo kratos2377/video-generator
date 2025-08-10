@@ -81,8 +81,9 @@ export class ChatService {
     sessionId: string,
   ): Promise<ChatSessionDto> {
     const session = await this.chatSessionRepository.findOne({
-      where: { id: sessionId, userId },
+      where: { userId: userId },
       relations: ['mediaFiles'],
+      order: { createdAt: 'DESC' },
     });
 
     if (!session) {
@@ -117,7 +118,7 @@ export class ChatService {
       });
     } else {
       chatSession = this.chatSessionRepository.create({
-        title: 'New Chat',
+        title: `Chat-${uuidv4()}-${sendDto.userId}`,
         userId,
       });
 
@@ -125,7 +126,7 @@ export class ChatService {
     }
 
     const userMessage: ChatMessage = {
-      id: uuidv4(),
+      id: chatSession?.id!,
       role: 'user',
       type: 'text',
       content: sendDto.content,

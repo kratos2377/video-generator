@@ -11,6 +11,10 @@ export class CreateChatSessionDto {
 }
 
 export class SendMessageDto {
+
+  @IsUUID()
+  userId: string;
+
   @IsString()
   content: string;
 
@@ -22,6 +26,7 @@ export class SendMessageDto {
 export class ChatSessionDto {
   id: string;
   title: string;
+  userId: string;
   description?: string;
   messages: ChatMessageDto[];
   mediaFiles: MediaFileDto[];

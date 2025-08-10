@@ -1,13 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-  HeadObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import * as Minio from 'minio'
 
 export interface S3UploadResult {
   key: string;
@@ -26,7 +19,7 @@ export interface ChatMessage {
 
 @Injectable()
 export class S3Service {
-  private readonly s3Client: S3Client;
+  private readonly minioClient: Minio.Client;
   private readonly bucketName: string;
   private readonly minioEndpoint: string;
   private readonly useMinIO: boolean;
@@ -35,37 +28,28 @@ export class S3Service {
   constructor(private configService: ConfigService) {
     this.bucketName =
       this.configService.get<string>('MINIO_BUCKET_NAME') ||
-      this.configService.get<string>('AWS_S3_BUCKET_NAME') ||
       'movie-generator-chats';
 
-    this.useMinIO =
-      this.configService.get<string>('MINIO_ENDPOINT') !== undefined;
     this.minioEndpoint =
       this.configService.get<string>('MINIO_ENDPOINT') ||
       'http://localhost:9000';
 
-    const s3Config: any = {
+    const minioConfig: any = {
       region: this.configService.get<string>('AWS_REGION') || 'us-east-1',
-      credentials: {
-        accessKeyId:
+      accessKey:
           this.configService.get<string>('MINIO_ACCESS_KEY') ||
-          this.configService.get<string>('AWS_ACCESS_KEY_ID') ||
           'minioadmin',
-        secretAccessKey:
+     secretKey:
           this.configService.get<string>('MINIO_SECRET_KEY') ||
-          this.configService.get<string>('AWS_SECRET_ACCESS_KEY') ||
           'minioadmin123',
-      },
+      
     };
 
-    // Configure for MinIO if using local storage
-    if (this.useMinIO) {
-      s3Config.endpoint = this.minioEndpoint;
-      s3Config.forcePathStyle = true; // Required for MinIO
-      s3Config.region = 'us-east-1'; // MinIO doesn't care about region, but SDK requires it
-    }
+      minioConfig.endpoint = this.minioEndpoint;
+      minioConfig.region = 'us-east-1'; 
+    
 
-    this.s3Client = new S3Client(s3Config);
+    this.minioClient = new Minio.Client(minioConfig);
   }
 
   async uploadFile(
@@ -74,15 +58,13 @@ export class S3Service {
     contentType: string,
   ): Promise<S3UploadResult> {
     try {
-      const command = new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: key,
-        Body: file,
-        ContentType: contentType,
-        ACL: 'private',
-      });
 
-      await this.s3Client.send(command);
+
+      await this.minioClient.putObject(
+        this.bucketName,
+        key,
+        file
+      );
 
       const url = this.generateFileUrl(key);
 
@@ -111,19 +93,13 @@ export class S3Service {
   async downloadChatFile(chatId: string): Promise<ChatMessage[]> {
     try {
       const key = `chats/${chatId}/chat.json`;
-      const command = new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: key,
-      });
 
-      const response = await this.s3Client.send(command);
-      const content = await response.Body?.transformToString();
 
-      if (!content) {
-        return [];
-      }
+      const response = await this.minioClient.presignedGetObject(this.bucketName , key , 3600);
+      
+      //Convert response string to actual chat data
 
-      return JSON.parse(content);
+      return []
     } catch (error) {
       this.logger.error(`Failed to download chat file: ${error.message}`);
       return [];
@@ -154,41 +130,49 @@ export class S3Service {
     return this.uploadFile(file, key, contentType);
   }
 
-  async deleteFile(key: string): Promise<void> {
-    try {
-      const command = new DeleteObjectCommand({
-        Bucket: this.bucketName,
-        Key: key,
-      });
+  // async deleteFile(key: string): Promise<void> {
+  //   try {
+  //     const command = new DeleteObjectCommand({
+  //       Bucket: this.bucketName,
+  //       Key: key,
+  //     });
 
-      await this.s3Client.send(command);
-    } catch (error) {
-      this.logger.error(`Failed to delete file from S3: ${error.message}`);
-      throw new Error(`Failed to delete file: ${error.message}`);
-    }
-  }
+  //     await this.s3Client.send(command);
+  //   } catch (error) {
+  //     this.logger.error(`Failed to delete file from S3: ${error.message}`);
+  //     throw new Error(`Failed to delete file: ${error.message}`);
+  //   }
+  // }
 
-  async fileExists(key: string): Promise<boolean> {
-    try {
-      const command = new HeadObjectCommand({
-        Bucket: this.bucketName,
-        Key: key,
-      });
+  // async fileExists(key: string): Promise<boolean> {
+  //   try {
+  //     const command = new HeadObjectCommand({
+  //       Bucket: this.bucketName,
+  //       Key: key,
+  //     });
 
-      await this.s3Client.send(command);
-      return true;
-    } catch (error) {
-      return false;
-    }
+  //     await this.minioClient.send(command);
+  //     return true;
+  //   } catch (error) {
+  //     return false;
+  //   }
+  // }
+
+
+  async getSignedUrl(method: string , key: string , expiresIn: number): Promise<string> {
+
+    return await this.minioClient.presignedUrl(
+      method,
+      this.bucketName,
+      expiresIn.toString()
+    )
+
   }
 
   async getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
-    const command = new GetObjectCommand({
-      Bucket: this.bucketName,
-      Key: key,
-    });
+ 
 
-    return getSignedUrl(this.s3Client, command, { expiresIn });
+    return await this.getSignedUrl('GET', key,  expiresIn);
   }
 
   async getSignedUploadUrl(
@@ -196,13 +180,7 @@ export class S3Service {
     contentType: string,
     expiresIn = 3600,
   ): Promise<string> {
-    const command = new PutObjectCommand({
-      Bucket: this.bucketName,
-      Key: key,
-      ContentType: contentType,
-    });
-
-    return getSignedUrl(this.s3Client, command, { expiresIn });
+ return await this.getSignedUrl('POST', key,  expiresIn);
   }
 
   generateChatFileKey(chatId: string): string {
@@ -214,12 +192,6 @@ export class S3Service {
   }
 
   private generateFileUrl(key: string): string {
-    if (this.useMinIO) {
-      // MinIO URL format: http://localhost:9000/bucket-name/key
-      return `${this.minioEndpoint}/${this.bucketName}/${key}`;
-    } else {
-      // AWS S3 URL format
-      return `https://${this.bucketName}.s3.amazonaws.com/${key}`;
-    }
+      return `${this.minioEndpoint}/${this.bucketName}/${key}`;   
   }
 }

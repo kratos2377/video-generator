@@ -24,6 +24,9 @@ export class ChatSession {
   @Column()
   userId: string;
 
+  @Column()
+  chatKey: string;
+
   @Column({ nullable: true })
   s3ChatFileKey?: string;
 

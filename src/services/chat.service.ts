@@ -117,12 +117,18 @@ export class ChatService {
         where: { id: sendDto.chatSessionId, userId },
       });
     } else {
+
+      const chatId = `Chat-${uuidv4()}-${sendDto.userId}`
+
       chatSession = this.chatSessionRepository.create({
-        title: `Chat-${uuidv4()}-${sendDto.userId}`,
+        title: chatId,
+        chatKey: chatId,
         userId,
+        s3ChatFileKey: this.s3Service.generateChatFileKey(chatId)
       });
 
-      await this.chatSessionRepository.save(chatSession);
+      
+     await this.chatSessionRepository.save(chatSession);
     }
 
     const userMessage: ChatMessage = {

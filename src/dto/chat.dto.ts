@@ -11,7 +11,6 @@ export class CreateChatSessionDto {
 }
 
 export class SendMessageDto {
-
   @IsUUID()
   userId: string;
 

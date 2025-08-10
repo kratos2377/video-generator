@@ -117,18 +117,16 @@ export class ChatService {
         where: { id: sendDto.chatSessionId, userId },
       });
     } else {
-
-      const chatId = `Chat-${uuidv4()}-${sendDto.userId}`
+      const chatId = `Chat-${uuidv4()}-${sendDto.userId}`;
 
       chatSession = this.chatSessionRepository.create({
         title: chatId,
         chatKey: chatId,
         userId,
-        s3ChatFileKey: this.s3Service.generateChatFileKey(chatId)
+        s3ChatFileKey: this.s3Service.generateChatFileKey(chatId),
       });
 
-      
-     await this.chatSessionRepository.save(chatSession);
+      await this.chatSessionRepository.save(chatSession);
     }
 
     const userMessage: ChatMessage = {
@@ -491,10 +489,28 @@ export class ChatService {
       imageGenResponse !== undefined &&
       imageGenResponse.generatedImages !== undefined
     ) {
+      const imageFile = `image-${uuidv4()}-${sessionId}.png`;
+
+      const cleanBase64 =
+        imageGenResponse?.generatedImages[0].image?.imageBytes!.replace(
+          /^data:([A-Za-z-+/]+);base64,/,
+          '',
+        );
+
+      const imageUrl = await this.s3Service.uploadFile(
+        Buffer.from(cleanBase64!, 'base64'),
+        imageFile,
+        MediaType.IMAGE,
+      );
+
       streamCallback({
         type: 'ai_image_generation_completed',
         data: {
-          message: imageGenResponse?.generatedImages[0],
+          message: {
+            image: {
+              imageUrl: imageUrl,
+            },
+          },
           sessionId: sessionId,
         },
       });
@@ -528,6 +544,7 @@ export class ChatService {
     return {
       id: session.id,
       title: session.title,
+      userId: session.userId,
       description: session.description,
       messages: [],
       mediaFiles:

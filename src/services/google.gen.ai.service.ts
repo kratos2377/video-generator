@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Service } from './s3.service';
-import { MediaType } from 'src/entities/media-file.entity';
+
 @Injectable()
 export class GoogleGenAIService {
   private googleGenAI: GoogleGenAI;
@@ -66,29 +66,33 @@ export class GoogleGenAIService {
         });
       }
 
-      // await this.s3Service.uploadMediaFile(
-      //   Buffer.from(
-      //     operation.response!.generatedVideos![0].video!,
-      //     'utf-8',
-      //   ),
-      //   `${uuidv4()}.mp4`,
+      const chatMediaKey = `video-${uuidv4()}.mp4`;
+
+      // console.log("Video Response is")
+      // console.log( operation.response!.generatedVideos![0])
+
+      // const videoUploadUrl = await this.s3Service.uploadFile(
+      //   Buffer.from( operation.response!.generatedVideos![0].video!.videoBytes!, 'base64'),
+      //   chatMediaKey,
       //   MediaType.VIDEO,
       // );
 
-      // const presignedUrl = this.s3Service.getSignedUploadUrl(
-      //   `video/${uuidv4()}`,
-      //   MediaType.VIDEO,
-      //   86400
-      // );
-
-      const video_path = `videos/veo3_with_image_input-${uuidv4()}.mp4`;
+      // // const videoUploadUrl = await this.s3Service
 
       await this.googleGenAI.files.download({
         file: operation.response!.generatedVideos![0].video!,
-        downloadPath: video_path,
+        downloadPath: `videos/${chatMediaKey}`,
       });
 
-      return '/home/monarch/proj/movie-generator/' + video_path;
+      // // const uplaodOBj = await this.s3Service.uploadMediaFile(
+      // //   fs.readFileSync(
+      // //     `/home/monarch/proj/movie-generator/videos/${chatMediaKey}`,
+      // //   ),
+      // //   chatMediaKey,
+      // //   MediaType.VIDEO,
+      // // );
+
+      return operation.response!.generatedVideos![0].video!.uri!;
     } catch (error) {
       console.error('Image-to-video generation failed:', error);
       // Fallback: return the original image URL

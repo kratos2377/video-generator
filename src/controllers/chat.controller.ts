@@ -42,7 +42,7 @@ export class ChatController {
   async getChatSession(
     @Request() req,
     @Param('id') sessionId: string,
-    @Param('userId') userId: string
+    @Param('userId') userId: string,
   ): Promise<ChatSessionDto> {
     return this.chatService.getChatSession(userId, sessionId);
   }

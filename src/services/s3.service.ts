@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as Minio from 'minio'
+import * as Minio from 'minio';
 
 export interface S3UploadResult {
   key: string;
@@ -34,22 +34,38 @@ export class S3Service {
       this.configService.get<string>('MINIO_ENDPOINT') ||
       'http://localhost:9000';
 
-    const minioConfig: any = {
-      region: this.configService.get<string>('AWS_REGION') || 'us-east-1',
+    const minioConfig = {
       accessKey:
-          this.configService.get<string>('MINIO_ACCESS_KEY') ||
-          'minioadmin',
-     secretKey:
-          this.configService.get<string>('MINIO_SECRET_KEY') ||
-          'minioadmin123',
-      
+        this.configService.get<string>('MINIO_ACCESS_KEY') || 'minioadmin',
+      secretKey:
+        this.configService.get<string>('MINIO_SECRET_KEY') || 'minioadmin123',
+      port: 9000,
+      useSSL: false,
+      endpoint: 'localhost',
     };
 
-      minioConfig.endpoint = this.minioEndpoint;
-      minioConfig.region = 'us-east-1'; 
-    
+    this.minioClient = new Minio.Client({
+      endPoint: 'localhost',
+      port: 9000,
+      useSSL: false,
+      accessKey:
+        this.configService.get<string>('MINIO_ACCESS_KEY') || 'minioadmin',
+      secretKey:
+        this.configService.get<string>('MINIO_SECRET_KEY') || 'minioadmin123',
+    });
+  }
 
-    this.minioClient = new Minio.Client(minioConfig);
+  async ensureBucketExists(): Promise<void> {
+    try {
+      const exists = await this.minioClient.bucketExists(this.bucketName);
+      if (!exists) {
+        await this.minioClient.makeBucket(this.bucketName, 'us-east-1');
+        console.log(`Bucket '${this.bucketName}' created successfully`);
+      }
+    } catch (error) {
+      console.error('Error ensuring bucket exists:', error);
+      throw error;
+    }
   }
 
   async uploadFile(
@@ -58,13 +74,7 @@ export class S3Service {
     contentType: string,
   ): Promise<S3UploadResult> {
     try {
-
-
-      await this.minioClient.putObject(
-        this.bucketName,
-        key,
-        file
-      );
+      await this.minioClient.putObject(this.bucketName, key, file);
 
       const url = this.generateFileUrl(key);
 
@@ -94,12 +104,15 @@ export class S3Service {
     try {
       const key = `chats/${chatId}/chat.json`;
 
+      const response = await this.minioClient.presignedGetObject(
+        this.bucketName,
+        key,
+        3600,
+      );
 
-      const response = await this.minioClient.presignedGetObject(this.bucketName , key , 3600);
-      
       //Convert response string to actual chat data
 
-      return []
+      return [];
     } catch (error) {
       this.logger.error(`Failed to download chat file: ${error.message}`);
       return [];
@@ -126,7 +139,7 @@ export class S3Service {
     fileName: string,
     contentType: string,
   ): Promise<S3UploadResult> {
-    const key = `chats/media/${Date.now()}-${fileName}`;
+    const key = `chats/media/videos/${fileName}`;
     return this.uploadFile(file, key, contentType);
   }
 
@@ -158,21 +171,21 @@ export class S3Service {
   //   }
   // }
 
-
-  async getSignedUrl(method: string , key: string , expiresIn: number): Promise<string> {
-
+  async getSignedUrl(
+    method: string,
+    key: string,
+    expiresIn: number,
+  ): Promise<string> {
     return await this.minioClient.presignedUrl(
       method,
       this.bucketName,
-      expiresIn.toString()
-    )
-
+      key,
+      expiresIn,
+    );
   }
 
   async getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
- 
-
-    return await this.getSignedUrl('GET', key,  expiresIn);
+    return await this.getSignedUrl('GET', key, expiresIn);
   }
 
   async getSignedUploadUrl(
@@ -180,7 +193,7 @@ export class S3Service {
     contentType: string,
     expiresIn = 3600,
   ): Promise<string> {
- return await this.getSignedUrl('POST', key,  expiresIn);
+    return await this.getSignedUrl('POST', key, expiresIn);
   }
 
   generateChatFileKey(chatId: string): string {
@@ -192,6 +205,6 @@ export class S3Service {
   }
 
   private generateFileUrl(key: string): string {
-      return `${this.minioEndpoint}/${this.bucketName}/${key}`;   
+    return `${this.minioEndpoint}/${this.bucketName}/${key}`;
   }
 }
